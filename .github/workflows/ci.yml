@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    # prod は deploy.yml から本ワークフローを呼び出すため除外
+    branches-ignore:
+      - prod
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' && github.ref != 'refs/heads/prod' }}
+
+jobs:
+  check:
+    name: Lint / Build / Test / Synth
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint & format check (Biome)
+        run: npx biome ci .
+
+      - name: Type check
+        run: npm run build
+
+      - name: Unit / snapshot / cdk-nag tests
+        run: npm run test:coverage -- --ci
+
+      - name: Synth (cdk-nag validation runs here)
+        run: npm run synth
+
+      - name: Upload cdk.out
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdk-out
+          path: cdk.out
+          retention-days: 7
+          if-no-files-found: ignore

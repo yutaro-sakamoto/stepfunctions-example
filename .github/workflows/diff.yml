@@ -1,0 +1,99 @@
+name: CDK Diff (prod)
+
+on:
+  pull_request:
+    branches:
+      - prod
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diff-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  diff:
+    name: cdk diff
+    # フォークからの PR では OIDC トークン・書き込み権限が使えないためスキップ
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # OIDC トークンの取得に必要
+      pull-requests: write # PR へのコメント投稿に必要
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          # 読み取り専用の diff 用ロールがあれば優先し、なければデプロイ用ロールを使う
+          role-to-assume: ${{ vars.AWS_DIFF_ROLE_ARN || vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: gha-diff-${{ github.run_id }}
+
+      - name: cdk diff
+        id: diff
+        run: |
+          set -o pipefail
+          npx cdk diff --all --no-color --no-notices 2>&1 | tee cdk-diff.txt
+
+      - name: Post diff to PR
+        if: always() && steps.diff.outcome != 'skipped'
+        uses: actions/github-script@v8
+        env:
+          DIFF_OUTCOME: ${{ steps.diff.outcome }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const marker = '<!-- cdk-diff-comment -->';
+            const maxLength = 60000; // GitHub コメントの上限 (65536 文字) に余裕を持たせる
+
+            let diff = fs.existsSync('cdk-diff.txt') ? fs.readFileSync('cdk-diff.txt', 'utf8') : '(no output)';
+            let truncated = false;
+            if (diff.length > maxLength) {
+              diff = diff.slice(0, maxLength);
+              truncated = true;
+            }
+
+            const ok = process.env.DIFF_OUTCOME === 'success';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              marker,
+              `## ${ok ? '📝' : '❌'} cdk diff (prod)`,
+              '',
+              `Commit: ${context.payload.pull_request.head.sha.slice(0, 7)} / [Workflow run](${runUrl})`,
+              '',
+              '<details><summary>Show diff</summary>',
+              '',
+              '```diff',
+              diff.trimEnd(),
+              '```',
+              '',
+              '</details>',
+              truncated ? `\n> ⚠️ 出力が長いため省略しました。全文は [Workflow run](${runUrl}) を参照してください。` : '',
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find((c) => c.user?.type === 'Bot' && c.body?.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+            await core.summary.addRaw(body).write();

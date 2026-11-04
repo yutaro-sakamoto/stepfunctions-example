@@ -3,7 +3,9 @@ module.exports = {
   roots: ['<rootDir>/test'],
   testMatch: ['**/*.test.ts'],
   transform: {
-    '^.+\\.tsx?$': ['@swc/jest']
+    '^.+\\.tsx?$': ['@swc/jest'],
   },
   setupFilesAfterEnv: ['aws-cdk-lib/testhelpers/jest-autoclean'],
+  collectCoverageFrom: ['lib/**/*.ts', 'bin/**/*.ts'],
+  coverageReporters: ['text', 'lcov'],
 };
