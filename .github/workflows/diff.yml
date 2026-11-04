@@ -25,7 +25,7 @@ jobs:
       id-token: write # OIDC トークンの取得に必要
       pull-requests: write # PR へのコメント投稿に必要
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v5
         with:
