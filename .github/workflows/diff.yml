@@ -36,7 +36,7 @@ jobs:
         run: npm ci
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           # 読み取り専用の diff 用ロールがあれば優先し、なければデプロイ用ロールを使う
           role-to-assume: ${{ vars.AWS_DIFF_ROLE_ARN || vars.AWS_DEPLOY_ROLE_ARN }}
