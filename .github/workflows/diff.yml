@@ -51,7 +51,7 @@ jobs:
 
       - name: Post diff to PR
         if: always() && steps.diff.outcome != 'skipped'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           DIFF_OUTCOME: ${{ steps.diff.outcome }}
         with:
