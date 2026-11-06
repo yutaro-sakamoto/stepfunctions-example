@@ -5,6 +5,8 @@ import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import type { Construct } from 'constructs';
 import { Validations } from 'aws-cdk-lib';
+import * as glue from 'aws-cdk-lib/aws-glue';
+import * as athena from 'aws-cdk-lib/aws-athena';
 
 export interface StepfunctionsExampleStackProps extends cdk.StackProps {
   /**
@@ -31,6 +33,40 @@ export class StepfunctionsExampleStack extends cdk.Stack {
       enforceSSL: true,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
+
+    const glueDatabase = new glue.CfnDatabase(this, 'GlueDatabase', {
+      catalogId: this.account,
+      databaseInput: { name: 'shop' },
+    });
+
+    const glueTable = new glue.CfnTable(this, 'Orders', {
+      catalogId: this.account,
+      databaseName: 'shop',
+      tableInput: {
+        name: 'orders',
+        tableType: 'EXTERNAL_TABLE',
+        parameters: {
+          classification: 'csv',
+          'skip.header.line.count': '1',
+        },
+        storageDescriptor: {
+          location: `s3://${bucket.bucketName}/orders/2026/`,
+          columns: [
+            { name: 'order_id', type: 'string'},
+            { name: 'customer', type: 'string'},
+            { name: 'payment', type: 'decimal(12, 2)' },
+          ],
+          inputFormat: 'org.apache.hadoop.mapred.TextInputFormat',
+          outputFormat: 'org.apache.hadoop.hive.ql.ioHiveIgnoreKeyTextOutputFormat',
+          serdeInfo: {
+            serializationLibrary: 'org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe',
+            parameters: { 'field.delim': ',' },
+          },
+        },
+      },
+    });
+
+    glueTable.addResourceDependency(glueDatabase);
 
     const getS3ObjectPrefix = sfn.Pass.jsonata(this, 'Init', {
       outputs: {
