@@ -1,0 +1,4 @@
+order_id,customer,payment
+A0001,alice,1200.00
+A0002,bob,350.50
+A0003,carol,4980.00
