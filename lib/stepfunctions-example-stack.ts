@@ -2,11 +2,14 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as cdk from 'aws-cdk-lib/core';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
+import * as path from 'node:path';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import type { Construct } from 'constructs';
 import { Validations } from 'aws-cdk-lib';
 import * as glue from 'aws-cdk-lib/aws-glue';
 import * as athena from 'aws-cdk-lib/aws-athena';
+import { RegionInfo } from 'aws-cdk-lib/region-info';
 
 export interface StepfunctionsExampleStackProps extends cdk.StackProps {
   /**
@@ -22,6 +25,17 @@ export class StepfunctionsExampleStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: StepfunctionsExampleStackProps = {}) {
     super(scope, id, props);
 
+    // cdk-nag の finding ID に入る ARN は実行経路で表記が変わる (partition が `aws` か `<AWS::Partition>`、
+    // account が実 ID か `<AWS::AccountId>`) ため、スタックの値から組み立てて両方の partition 表記を acknowledge する
+    const render = (value: string, pseudo: string) => (cdk.Token.isUnresolved(value) ? `<${pseudo}>` : value);
+    const region = render(this.region, 'AWS::Region');
+    const account = render(this.account, 'AWS::AccountId');
+    const partitions = new Set(['<AWS::Partition>']);
+    if (!cdk.Token.isUnresolved(this.region)) {
+      const partition = RegionInfo.get(this.region).partition;
+      if (partition) partitions.add(partition);
+    }
+
     const logGroup = new logs.LogGroup(this, 'StateMachineLogGroup', {
       retention: props.logRetention ?? logs.RetentionDays.THREE_DAYS,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
@@ -34,6 +48,48 @@ export class StepfunctionsExampleStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
     });
+
+    // テスト用 CSV (test-data/orders/date=YYYY-MM-DD/*.csv) をデプロイ時にバケットへ投入する
+    // prune: false で、手動で追加したオブジェクトがデプロイのたびに消されないようにする
+    new s3deploy.BucketDeployment(this, 'TestData', {
+      sources: [s3deploy.Source.asset(path.join(__dirname, '..', 'test-data', 'orders'))],
+      destinationBucket: bucket,
+      prune: false,
+    });
+
+    // BucketDeployment はスタック直下にシングルトンの Lambda (Custom::CDKBucketDeployment...) を作る。
+    // ロール・ポリシー・ランタイムは CDK 側で決まっていて変更できないため、この Lambda 配下に限って acknowledge する
+    const deploymentHandlers = this.node.children.filter((c) => c.node.id.startsWith('Custom::CDKBucketDeployment'));
+    for (const handler of deploymentHandlers) {
+      const validations = cdk.Validations.of(handler);
+      validations.acknowledge({
+        id: 'AwsSolutions-IAM4[Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole]',
+        reason: 'The CDK-managed BucketDeployment handler uses the AWS managed basic execution role for CloudWatch Logs.',
+      });
+      for (const action of ['s3:GetBucket*', 's3:GetObject*', 's3:List*', 's3:Abort*', 's3:DeleteObject*']) {
+        validations.acknowledge({
+          id: `AwsSolutions-IAM5[Action::${action}]`,
+          reason: `The CDK-managed BucketDeployment handler is granted ${action} to copy assets into the destination bucket.`,
+        });
+      }
+      // CDK のアセットバケット (cdk bootstrap で作られる) から zip を読むための権限
+      const qualifier = this.node.tryGetContext('@aws-cdk/core:bootstrapQualifier') ?? 'hnb659fds';
+      for (const partition of partitions) {
+        validations.acknowledge({
+          id: `AwsSolutions-IAM5[Resource::arn:${partition}:s3:::cdk-${qualifier}-assets-${account}-${region}/*]`,
+          reason: 'The BucketDeployment handler reads deployment assets from any object in the CDK bootstrap asset bucket.',
+        });
+      }
+      // 投入先バケット内の全オブジェクトへの書き込み権限
+      validations.acknowledge({
+        id: `AwsSolutions-IAM5[Resource::<${this.getLogicalId(bucket.node.defaultChild as s3.CfnBucket)}.Arn>/*]`,
+        reason: 'The BucketDeployment handler writes test data to arbitrary keys in the destination bucket.',
+      });
+      validations.acknowledge({
+        id: 'AwsSolutions-L1',
+        reason: 'The BucketDeployment handler runtime is managed by aws-cdk-lib and cannot be configured.',
+      });
+    }
 
     const athenaResultBucket = new s3.Bucket(this, 'AhtenaResultBucket', {
       versioned: false,
@@ -75,7 +131,7 @@ export class StepfunctionsExampleStack extends cdk.Stack {
           columns: [
             { name: 'order_id', type: 'string'},
             { name: 'customer', type: 'string'},
-            { name: 'payment', type: 'decimal(12, 2)' },
+            { name: 'payment', type: 'decimal(12,2)' },
           ],
           inputFormat: 'org.apache.hadoop.mapred.TextInputFormat',
           outputFormat: 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat',
@@ -109,7 +165,7 @@ export class StepfunctionsExampleStack extends cdk.Stack {
     }).next(tasks.AthenaStartQueryExecution.jsonata(this, 'Query', {
       queryString: 'SELECT SUM(payment) AS total FROM orders WHERE dt = ?',
       executionParameters: [
-        '{% $states.input.date %}'
+        `{% "'" & $states.input.date & "'" %}`
       ],
       queryExecutionContext: { databaseName },
       workGroup: workGroup.ref,
@@ -142,11 +198,13 @@ export class StepfunctionsExampleStack extends cdk.Stack {
     });
 
     // AthenaStartQueryExecution が付与する Glue 権限は、データベース配下の全テーブル/関数を対象にする
-    for (const resource of ['table', 'userDefinedFunction']) {
-      cdk.Validations.of(this.stateMachine).acknowledge({
-        id: `AwsSolutions-IAM5[Resource::arn:aws:glue:${this.region}:<AWS::AccountId>:${resource}/${databaseName}/*]`,
-        reason: `Athena queries need Glue catalog access to every ${resource} in the ${databaseName} database.`,
-      });
+    for (const partition of partitions) {
+      for (const resource of ['table', 'userDefinedFunction']) {
+        cdk.Validations.of(this.stateMachine).acknowledge({
+          id: `AwsSolutions-IAM5[Resource::arn:${partition}:glue:${region}:${account}:${resource}/${databaseName}/*]`,
+          reason: `Athena queries need Glue catalog access to every ${resource} in the ${databaseName} database.`,
+        });
+      }
     }
 
     Validations.of(athenaResultBucket).acknowledge({
