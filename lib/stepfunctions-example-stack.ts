@@ -156,10 +156,15 @@ export class StepfunctionsExampleStack extends cdk.Stack {
       },
     });
 
-    const machineDefinition = sfn.Pass.jsonata(this, 'Init', {
+    const invalidInput = sfn.Fail.jsonata(this, 'InvalidInput', {
+      error: 'ValidationError',
+      cause: '{% "Invalid input: " & $string($states.input) %}',
+    });
+
+    const processInput = sfn.Pass.jsonata(this, 'Init', {
       outputs: {
         date: `{%
-          $exists($states.input.date) ? $states.input.date : "2026-01-01"
+          $states.input.date < "2026-01-01" ? "2026-01-01" : $states.input.date
         %}`,
       }
     }).next(tasks.AthenaStartQueryExecution.jsonata(this, 'Query', {
@@ -176,6 +181,14 @@ export class StepfunctionsExampleStack extends cdk.Stack {
         total: '{% $states.result.ResultSet.Rows[1].Data[0].VarCharValue %}'
       },
     }));
+
+    const machineDefinition = sfn.Choice.jsonata(this, 'ValidateInput')
+      .when(
+        sfn.Condition.jsonata(
+          '{% $type($states.input.date) = "string" and $contains($states.input.date, /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) %}'
+        ),
+        processInput
+      ).otherwise(invalidInput);
 
     this.stateMachine = new sfn.StateMachine(this, 'StateMachine', {
       definitionBody: sfn.DefinitionBody.fromChainable(machineDefinition),
