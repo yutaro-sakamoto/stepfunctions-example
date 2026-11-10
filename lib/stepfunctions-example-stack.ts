@@ -10,6 +10,7 @@ import { Validations } from 'aws-cdk-lib';
 import * as glue from 'aws-cdk-lib/aws-glue';
 import * as athena from 'aws-cdk-lib/aws-athena';
 import { RegionInfo } from 'aws-cdk-lib/region-info';
+import { ApplicationTargetGroup } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 
 export interface StepfunctionsExampleStackProps extends cdk.StackProps {
   /**
@@ -39,6 +40,23 @@ export class StepfunctionsExampleStack extends cdk.Stack {
     const logGroup = new logs.LogGroup(this, 'StateMachineLogGroup', {
       retention: props.logRetention ?? logs.RetentionDays.THREE_DAYS,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const appLogGroup = new logs.LogGroup(this, 'StateMachineAppLogGroup', {
+      retention: props.logRetention ?? logs.RetentionDays.THREE_DAYS,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const logStream = new logs.LogStream(this, 'AppLogStream', {
+      logGroup: appLogGroup,
+      logStreamName: 'step-functions',
+    });
+
+    const logStreamArn = cdk.Stack.of(this).formatArn({
+      service: 'logs',
+      resource: 'log-group',
+      resourceName: `${appLogGroup.logGroupName}:log-stream:${logStream.logStreamName}`,
+      arnFormat: cdk.ArnFormat.COLON_RESOURCE_NAME,
     });
 
     const bucket = new s3.Bucket(this, 'MyBucket', {
@@ -156,10 +174,27 @@ export class StepfunctionsExampleStack extends cdk.Stack {
       },
     });
 
-    const invalidInput = sfn.Fail.jsonata(this, 'InvalidInput', {
+    const invalidInput = tasks.CallAwsService.jsonata(this, 'WriteLog', {
+      service: 'cloudwatchlogs',
+      action: 'putLogEvents',
+      parameters: {
+        LogGroupName: appLogGroup.logGroupName,
+        LogStreamName: logStream.logStreamName,
+        LogEvents: [
+          {
+            Timestamp: '{% $millis() %}',
+            Message: 'Error input',
+          },
+        ],
+      },
+      iamResources: [logStreamArn],
+      iamAction: 'logs:PutLogEvents',
+      outputs: '{% $states.input %}'
+    }).next(
+    sfn.Fail.jsonata(this, 'InvalidInput', {
       error: 'ValidationError',
       cause: '{% "Invalid input: " & $string($states.input) %}',
-    });
+    }));
 
     const processInput = sfn.Pass.jsonata(this, 'Init', {
       outputs: {
