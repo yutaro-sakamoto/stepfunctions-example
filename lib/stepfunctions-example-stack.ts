@@ -196,6 +196,32 @@ export class StepfunctionsExampleStack extends cdk.Stack {
       cause: '{% "Invalid input: " & $string($states.input) %}',
     }));
 
+    const wait = sfn.Wait.jsonata(this, 'WaitForQuery', {
+      time: sfn.WaitTime.duration(cdk.Duration.seconds(1)),
+    });
+
+    const startQuery = tasks.AthenaStartQueryExecution.jsonata(this, 'StartQuery', {
+      queryString: 'SELECT SUM(payment) AS total FROM orders WHERE dt = ?',
+      executionParameters: [
+        `{% "'" & $states.input.date & "'" %}`
+      ],
+      queryExecutionContext: { databaseName },
+      workGroup: workGroup.ref,
+      integrationPattern: sfn.IntegrationPattern.RUN_JOB,
+      assign: {
+        queryExecutionId: '{% $states.result.QueryExecutionId %}',
+        attempt: 0,
+      }
+    });
+
+    const getStatus = tasks.AthenaGetQueryExecution.jsonata(this, 'GetQueryStatus', {
+      queryExecutionId: '{% $queryExecutionId %}',
+      assign: {
+        state: '{% $states.result.QueryExecution.Status.State %}',
+        attempt: '{% $attempt + 1 %}'
+      }
+    })
+
     const processInput = sfn.Pass.jsonata(this, 'Init', {
       outputs: {
         date: `{%
