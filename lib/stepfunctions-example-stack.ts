@@ -11,6 +11,8 @@ import * as glue from 'aws-cdk-lib/aws-glue';
 import * as athena from 'aws-cdk-lib/aws-athena';
 import { RegionInfo } from 'aws-cdk-lib/region-info';
 import { ApplicationTargetGroup } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import { STEPFUNCTIONS_TASKS_EVALUATE_EXPRESSION_DEDICATED_FUNCTION } from 'aws-cdk-lib/cx-api';
+import { InspectorStartAssessmentRun } from 'aws-cdk-lib/aws-scheduler-targets';
 
 export interface StepfunctionsExampleStackProps extends cdk.StackProps {
   /**
@@ -220,7 +222,30 @@ export class StepfunctionsExampleStack extends cdk.Stack {
         state: '{% $states.result.QueryExecution.Status.State %}',
         attempt: '{% $attempt + 1 %}'
       }
-    })
+    });
+
+    const increment = sfn.Pass.jsonata(this, 'Increment', {
+      assign: { retryCount: '{% $retryCount + 1 %}' },
+    });
+
+    const loopEnd = sfn.Choice.jsonata(this, 'IsDone')
+      .when(
+        sfn.Condition.jsonata('{% status = "DONE" %}'),
+        sfn.Succeed.jsonata(this, 'Success', {
+          outputs: {
+            status: '{% status %}',
+            attempts: '{% $retryCount + 1 %}',
+          },
+        }),
+      )
+      .when(
+        sfn.Condition.jsonata(`{% $retryCount >= 3 %}`),
+        sfn.Fail.jsonata(this, 'TooManyRetryies', {
+          error: 'MaxZRetryExceeded',
+          cause: `{% The retry limit %}`,
+        })
+      )
+      .otherwise(increment);
 
     const processInput = sfn.Pass.jsonata(this, 'Init', {
       outputs: {
