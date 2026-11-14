@@ -28,6 +28,9 @@ export class StepfunctionsExampleStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: StepfunctionsExampleStackProps = {}) {
     super(scope, id, props);
 
+    const MAX_ATTEMPTS = 10;
+    const WAIT_INTERVAL_IN_SECONDS = 1;
+
     // cdk-nag の finding ID に入る ARN は実行経路で表記が変わる (partition が `aws` か `<AWS::Partition>`、
     // account が実 ID か `<AWS::AccountId>`) ため、スタックの値から組み立てて両方の partition 表記を acknowledge する
     const render = (value: string, pseudo: string) => (cdk.Token.isUnresolved(value) ? `<${pseudo}>` : value);
@@ -176,30 +179,38 @@ export class StepfunctionsExampleStack extends cdk.Stack {
       },
     });
 
-    const invalidInput = tasks.CallAwsService.jsonata(this, 'WriteLog', {
-      service: 'cloudwatchlogs',
-      action: 'putLogEvents',
-      parameters: {
-        LogGroupName: appLogGroup.logGroupName,
-        LogStreamName: logStream.logStreamName,
-        LogEvents: [
-          {
-            Timestamp: '{% $millis() %}',
-            Message: 'Error input',
-          },
-        ],
-      },
-      iamResources: [logStreamArn],
-      iamAction: 'logs:PutLogEvents',
-      outputs: '{% $states.input %}'
-    }).next(
-    sfn.Fail.jsonata(this, 'InvalidInput', {
+    /**
+     * エラー内容をアプリ用ロググループに書き込んでから Fail で終了するチェーンを作る。
+     * ログのステートは `${id}Log`、Fail のステートは `id` という名前になる。
+     * @param cause Fail の cause とログのメッセージに使う文字列 (JSONata 式 `{% ... %}` も可)
+     */
+    const logAndFail = (id: string, props: { error: string; cause: string }) =>
+      tasks.CallAwsService.jsonata(this, `${id}Log`, {
+        service: 'cloudwatchlogs',
+        action: 'putLogEvents',
+        parameters: {
+          LogGroupName: appLogGroup.logGroupName,
+          LogStreamName: logStream.logStreamName,
+          LogEvents: [
+            {
+              Timestamp: '{% $millis() %}',
+              Message: props.cause,
+            },
+          ],
+        },
+        iamResources: [logStreamArn],
+        iamAction: 'logs:PutLogEvents',
+        // 後続の Fail で $states.input を参照できるよう、入力をそのまま渡す
+        outputs: '{% $states.input %}',
+      }).next(sfn.Fail.jsonata(this, id, props));
+
+    const invalidInput = logAndFail('InvalidInput', {
       error: 'ValidationError',
       cause: '{% "Invalid input: " & $string($states.input) %}',
-    }));
+    });
 
     const wait = sfn.Wait.jsonata(this, 'WaitForQuery', {
-      time: sfn.WaitTime.duration(cdk.Duration.seconds(1)),
+      time: sfn.WaitTime.duration(cdk.Duration.seconds(WAIT_INTERVAL_IN_SECONDS)),
     });
 
     const startQuery = tasks.AthenaStartQueryExecution.jsonata(this, 'StartQuery', {
@@ -219,33 +230,31 @@ export class StepfunctionsExampleStack extends cdk.Stack {
     const getStatus = tasks.AthenaGetQueryExecution.jsonata(this, 'GetQueryStatus', {
       queryExecutionId: '{% $queryExecutionId %}',
       assign: {
-        state: '{% $states.result.QueryExecution.Status.State %}',
+        queryState: '{% $states.result.QueryExecution.Status.State %}',
         attempt: '{% $attempt + 1 %}'
       }
     });
 
     const getResults = tasks.AthenaGetQueryResults.jsonata(this, 'GetResults', {
       queryExecutionId: '{% $queryExecutionId %}',
-      assign: {
-        queryState: '{% $states.result.QueryExecution.Status.State %}',
-        attemp: '{% $attempt + 1 %}',
-      }
+      outputs: {
+        total: '{% $states.result.ResultSet.Rows[1].Data[0].VarCharValue %}',
+        attempts: '{% $attempt %}',
+      },
     });
-
-    const MAX_ATTEMPTS = 3;
 
     const isDone = sfn.Choice.jsonata(this, 'IsDone')
       .when(sfn.Condition.jsonata('{% $queryState = "SUCCEEDED" %}'), getResults)
       .when(
         sfn.Condition.jsonata('{% $queryState in ["FAILED", "CANCELLED"] %}'),
-        sfn.Fail.jsonata(this, 'QueryFailed', {
+        logAndFail('QueryFailed', {
           error: 'QueryFailed',
           cause: '{% "Athena query " & $queryState %}',
         }),
       )
       .when(
         sfn.Condition.jsonata(`{% $attempt >= ${MAX_ATTEMPTS} %}`),
-        sfn.Fail.jsonata(this, 'tooManyRetries', {
+        logAndFail('tooManyRetries', {
           error: 'MaxRetryExceeded',
           cause: 'The retry limit was exceeded',
         }),
