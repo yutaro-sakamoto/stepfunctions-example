@@ -274,7 +274,7 @@ export class StepfunctionsExampleStack extends cdk.Stack {
 
     this.stateMachine = new sfn.StateMachine(this, 'StateMachine', {
       definitionBody: sfn.DefinitionBody.fromChainable(machineDefinition),
-      stateMachineType: sfn.StateMachineType.STANDARD,
+      stateMachineType: sfn.StateMachineType.EXPRESS,
       timeout: cdk.Duration.minutes(5),
       tracingEnabled: true,
       logs: {
