@@ -209,7 +209,7 @@ export class StepfunctionsExampleStack extends cdk.Stack {
       ],
       queryExecutionContext: { databaseName },
       workGroup: workGroup.ref,
-      integrationPattern: sfn.IntegrationPattern.RUN_JOB,
+      integrationPattern: sfn.IntegrationPattern.REQUEST_RESPONSE,
       assign: {
         queryExecutionId: '{% $states.result.QueryExecutionId %}',
         attempt: 0,
@@ -224,28 +224,33 @@ export class StepfunctionsExampleStack extends cdk.Stack {
       }
     });
 
-    const increment = sfn.Pass.jsonata(this, 'Increment', {
-      assign: { retryCount: '{% $retryCount + 1 %}' },
+    const getResults = tasks.AthenaGetQueryResults.jsonata(this, 'GetResults', {
+      queryExecutionId: '{% $queryExecutionId %}',
+      assign: {
+        queryState: '{% $states.result.QueryExecution.Status.State %}',
+        attemp: '{% $attempt + 1 %}',
+      }
     });
 
-    const loopEnd = sfn.Choice.jsonata(this, 'IsDone')
+    const MAX_ATTEMPTS = 3;
+
+    const isDone = sfn.Choice.jsonata(this, 'IsDone')
+      .when(sfn.Condition.jsonata('{% $queryState = "SUCCEEDED" %}'), getResults)
       .when(
-        sfn.Condition.jsonata('{% status = "DONE" %}'),
-        sfn.Succeed.jsonata(this, 'Success', {
-          outputs: {
-            status: '{% status %}',
-            attempts: '{% $retryCount + 1 %}',
-          },
+        sfn.Condition.jsonata('{% $queryState in ["FAILED", "CANCELLED"] %}'),
+        sfn.Fail.jsonata(this, 'QueryFailed', {
+          error: 'QueryFailed',
+          cause: '{% "Athena query " & $queryState %}',
         }),
       )
       .when(
-        sfn.Condition.jsonata(`{% $retryCount >= 3 %}`),
-        sfn.Fail.jsonata(this, 'TooManyRetryies', {
-          error: 'MaxZRetryExceeded',
-          cause: `{% The retry limit %}`,
-        })
+        sfn.Condition.jsonata(`{% $attempt >= ${MAX_ATTEMPTS} %}`),
+        sfn.Fail.jsonata(this, 'tooManyRetries', {
+          error: 'MaxRetryExceeded',
+          cause: 'The retry limit was exceeded',
+        }),
       )
-      .otherwise(increment);
+      .otherwise(wait);
 
     const processInput = sfn.Pass.jsonata(this, 'Init', {
       outputs: {
@@ -253,20 +258,11 @@ export class StepfunctionsExampleStack extends cdk.Stack {
           $states.input.date < "2026-01-01" ? "2026-01-01" : $states.input.date
         %}`,
       }
-    }).next(tasks.AthenaStartQueryExecution.jsonata(this, 'Query', {
-      queryString: 'SELECT SUM(payment) AS total FROM orders WHERE dt = ?',
-      executionParameters: [
-        `{% "'" & $states.input.date & "'" %}`
-      ],
-      queryExecutionContext: { databaseName },
-      workGroup: workGroup.ref,
-      integrationPattern: sfn.IntegrationPattern.RUN_JOB,
-    })).next(tasks.AthenaGetQueryResults.jsonata(this, 'GetResults', {
-      queryExecutionId: '{% $states.input.QueryExecution.QueryExecutionId %}',
-      outputs: {
-        total: '{% $states.result.ResultSet.Rows[1].Data[0].VarCharValue %}'
-      },
-    }));
+    })
+      .next(startQuery)
+      .next(wait)
+      .next(getStatus)
+      .next(isDone);
 
     const machineDefinition = sfn.Choice.jsonata(this, 'ValidateInput')
       .when(
