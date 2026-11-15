@@ -19,10 +19,10 @@ describe('StepfunctionsExampleStack', () => {
     expect(template.toJSON()).toMatchSnapshot();
   });
 
-  test('creates a STANDARD state machine with tracing and logging enabled', () => {
+  test('creates an EXPRESS state machine with tracing and logging enabled', () => {
     template.resourceCountIs('AWS::StepFunctions::StateMachine', 1);
     template.hasResourceProperties('AWS::StepFunctions::StateMachine', {
-      StateMachineType: 'STANDARD',
+      StateMachineType: 'EXPRESS',
       TracingConfiguration: { Enabled: true },
       LoggingConfiguration: {
         Level: 'ALL',
@@ -40,19 +40,34 @@ describe('StepfunctionsExampleStack', () => {
 
   test('state machine definition is valid ASL', () => {
     const [stateMachine] = Object.values(template.findResources('AWS::StepFunctions::StateMachine'));
-    const definition = JSON.parse(stateMachine.Properties.DefinitionString as string);
+    // DefinitionString は Fn::Join になっているので、トークン部分をプレースホルダに置き換えてからパースする
+    const definitionString = stateMachine.Properties.DefinitionString;
+    const raw =
+      typeof definitionString === 'string'
+        ? definitionString
+        : (definitionString['Fn::Join'][1] as unknown[]).map((p) => (typeof p === 'string' ? p : 'TOKEN')).join('');
+    const definition = JSON.parse(raw);
     expect(definition).toMatchObject({
-      StartAt: 'Hello',
+      StartAt: 'ValidateInput',
       TimeoutSeconds: 300,
       States: {
-        Hello: { Type: 'Pass', Next: 'Done' },
-        Done: { Type: 'Succeed' },
+        ValidateInput: { Type: 'Choice', Default: 'InvalidInputLog' },
+        InvalidInputLog: { Type: 'Task', Next: 'InvalidInput' },
+        InvalidInput: { Type: 'Fail', Error: 'ValidationError' },
+        Init: { Type: 'Pass', Next: 'StartQuery' },
+        StartQuery: { Type: 'Task', Next: 'WaitForQuery' },
+        WaitForQuery: { Type: 'Wait', Seconds: 1, Next: 'GetQueryStatus' },
+        GetQueryStatus: { Type: 'Task', Next: 'IsDone' },
+        IsDone: { Type: 'Choice', Default: 'WaitForQuery' },
+        GetResults: { Type: 'Task', End: true },
+        QueryFailed: { Type: 'Fail', Error: 'QueryFailed' },
+        tooManyRetries: { Type: 'Fail', Error: 'MaxRetryExceeded' },
       },
     });
   });
 
   test('log group has a retention period', () => {
-    template.hasResourceProperties('AWS::Logs::LogGroup', { RetentionInDays: 30 });
+    template.hasResourceProperties('AWS::Logs::LogGroup', { RetentionInDays: 3 });
   });
 
   test('log retention can be overridden', () => {

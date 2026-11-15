@@ -1,23 +1,20 @@
-import * as logs from 'aws-cdk-lib/aws-logs';
-import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
-import * as cdk from 'aws-cdk-lib/core';
-import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as path from 'node:path';
+import { Validations } from 'aws-cdk-lib';
+import * as athena from 'aws-cdk-lib/aws-athena';
+import * as glue from 'aws-cdk-lib/aws-glue';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
-import type { Construct } from 'constructs';
-import { Validations } from 'aws-cdk-lib';
-import * as glue from 'aws-cdk-lib/aws-glue';
-import * as athena from 'aws-cdk-lib/aws-athena';
+import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
+import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
+import * as cdk from 'aws-cdk-lib/core';
 import { RegionInfo } from 'aws-cdk-lib/region-info';
-import { ApplicationTargetGroup } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import { STEPFUNCTIONS_TASKS_EVALUATE_EXPRESSION_DEDICATED_FUNCTION } from 'aws-cdk-lib/cx-api';
-import { InspectorStartAssessmentRun } from 'aws-cdk-lib/aws-scheduler-targets';
+import type { Construct } from 'constructs';
 
 export interface StepfunctionsExampleStackProps extends cdk.StackProps {
   /**
    * ステートマシンの実行ログの保持期間
-   * @default logs.RetentionDays.ONE_MONTH
+   * @default logs.RetentionDays.THREE_DAYS
    */
   readonly logRetention?: logs.RetentionDays;
 }
@@ -87,7 +84,8 @@ export class StepfunctionsExampleStack extends cdk.Stack {
       const validations = cdk.Validations.of(handler);
       validations.acknowledge({
         id: 'AwsSolutions-IAM4[Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole]',
-        reason: 'The CDK-managed BucketDeployment handler uses the AWS managed basic execution role for CloudWatch Logs.',
+        reason:
+          'The CDK-managed BucketDeployment handler uses the AWS managed basic execution role for CloudWatch Logs.',
       });
       for (const action of ['s3:GetBucket*', 's3:GetObject*', 's3:List*', 's3:Abort*', 's3:DeleteObject*']) {
         validations.acknowledge({
@@ -100,7 +98,8 @@ export class StepfunctionsExampleStack extends cdk.Stack {
       for (const partition of partitions) {
         validations.acknowledge({
           id: `AwsSolutions-IAM5[Resource::arn:${partition}:s3:::cdk-${qualifier}-assets-${account}-${region}/*]`,
-          reason: 'The BucketDeployment handler reads deployment assets from any object in the CDK bootstrap asset bucket.',
+          reason:
+            'The BucketDeployment handler reads deployment assets from any object in the CDK bootstrap asset bucket.',
         });
       }
       // 投入先バケット内の全オブジェクトへの書き込み権限
@@ -120,7 +119,7 @@ export class StepfunctionsExampleStack extends cdk.Stack {
       enforceSSL: true,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
-    })
+    });
 
     const glueDatabase = new glue.CfnDatabase(this, 'GlueDatabase', {
       catalogId: this.account,
@@ -135,9 +134,7 @@ export class StepfunctionsExampleStack extends cdk.Stack {
       tableInput: {
         name: 'orders',
         tableType: 'EXTERNAL_TABLE',
-        partitionKeys: [
-          { name: 'dt', type: 'string'}
-        ],
+        partitionKeys: [{ name: 'dt', type: 'string' }],
         parameters: {
           classification: 'csv',
           'skip.header.line.count': '1',
@@ -152,8 +149,8 @@ export class StepfunctionsExampleStack extends cdk.Stack {
         storageDescriptor: {
           location: `s3://${bucket.bucketName}/`,
           columns: [
-            { name: 'order_id', type: 'string'},
-            { name: 'customer', type: 'string'},
+            { name: 'order_id', type: 'string' },
+            { name: 'customer', type: 'string' },
             { name: 'payment', type: 'decimal(12,2)' },
           ],
           inputFormat: 'org.apache.hadoop.mapred.TextInputFormat',
@@ -215,24 +212,22 @@ export class StepfunctionsExampleStack extends cdk.Stack {
 
     const startQuery = tasks.AthenaStartQueryExecution.jsonata(this, 'StartQuery', {
       queryString: 'SELECT SUM(payment) AS total FROM orders WHERE dt = ?',
-      executionParameters: [
-        `{% "'" & $states.input.date & "'" %}`
-      ],
+      executionParameters: [`{% "'" & $states.input.date & "'" %}`],
       queryExecutionContext: { databaseName },
       workGroup: workGroup.ref,
       integrationPattern: sfn.IntegrationPattern.REQUEST_RESPONSE,
       assign: {
         queryExecutionId: '{% $states.result.QueryExecutionId %}',
         attempt: 0,
-      }
+      },
     });
 
     const getStatus = tasks.AthenaGetQueryExecution.jsonata(this, 'GetQueryStatus', {
       queryExecutionId: '{% $queryExecutionId %}',
       assign: {
         queryState: '{% $states.result.QueryExecution.Status.State %}',
-        attempt: '{% $attempt + 1 %}'
-      }
+        attempt: '{% $attempt + 1 %}',
+      },
     });
 
     const getResults = tasks.AthenaGetQueryResults.jsonata(this, 'GetResults', {
@@ -266,7 +261,7 @@ export class StepfunctionsExampleStack extends cdk.Stack {
         date: `{%
           $states.input.date < "2026-01-01" ? "2026-01-01" : $states.input.date
         %}`,
-      }
+      },
     })
       .next(startQuery)
       .next(wait)
@@ -276,10 +271,11 @@ export class StepfunctionsExampleStack extends cdk.Stack {
     const machineDefinition = sfn.Choice.jsonata(this, 'ValidateInput')
       .when(
         sfn.Condition.jsonata(
-          '{% $type($states.input.date) = "string" and $contains($states.input.date, /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) %}'
+          '{% $type($states.input.date) = "string" and $contains($states.input.date, /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) %}',
         ),
-        processInput
-      ).otherwise(invalidInput);
+        processInput,
+      )
+      .otherwise(invalidInput);
 
     this.stateMachine = new sfn.StateMachine(this, 'StateMachine', {
       definitionBody: sfn.DefinitionBody.fromChainable(machineDefinition),

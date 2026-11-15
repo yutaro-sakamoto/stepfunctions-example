@@ -17,6 +17,566 @@ exports[`StepfunctionsExampleStack snapshot 1`] = `
     },
   },
   "Resources": {
+    "AhtenaResultBucketAutoDeleteObjectsCustomResource324E2FAE": {
+      "DeletionPolicy": "Delete",
+      "DependsOn": [
+        "AhtenaResultBucketPolicy275FDC7E",
+      ],
+      "Properties": {
+        "BucketName": {
+          "Ref": "AhtenaResultBucketBB29F839",
+        },
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "Custom::S3AutoDeleteObjects",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "AhtenaResultBucketBB29F839": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true,
+        },
+        "Tags": [
+          {
+            "Key": "aws-cdk:auto-delete-objects",
+            "Value": "true",
+          },
+        ],
+      },
+      "Type": "AWS::S3::Bucket",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "AhtenaResultBucketPolicy275FDC7E": {
+      "Properties": {
+        "Bucket": {
+          "Ref": "AhtenaResultBucketBB29F839",
+        },
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "s3:*",
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false",
+                },
+              },
+              "Effect": "Deny",
+              "Principal": {
+                "AWS": "*",
+              },
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "AhtenaResultBucketBB29F839",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "AhtenaResultBucketBB29F839",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:PutBucketPolicy",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+              ],
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::GetAtt": [
+                    "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+                    "Arn",
+                  ],
+                },
+              },
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "AhtenaResultBucketBB29F839",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "AhtenaResultBucketBB29F839",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+      },
+      "Type": "AWS::S3::BucketPolicy",
+    },
+    "AppLogStream3A61F24B": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "LogGroupName": {
+          "Ref": "StateMachineAppLogGroupAA78DA06",
+        },
+        "LogStreamName": "step-functions",
+      },
+      "Type": "AWS::Logs::LogStream",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756C81C01536": {
+      "DependsOn": [
+        "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756CServiceRoleDefaultPolicy88902FDF",
+        "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756CServiceRole89A01265",
+      ],
+      "Properties": {
+        "Architectures": [
+          "arm64",
+        ],
+        "Code": {
+          "S3Bucket": "cdk-hnb659fds-assets-123456789012-ap-northeast-1",
+          "S3Key": "35328da138f26fbd9160297abc9a2522d93dbf75878cd5114a9c050419fc1ce0.zip",
+        },
+        "Environment": {
+          "Variables": {
+            "AWS_CA_BUNDLE": "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+          },
+        },
+        "Handler": "index.handler",
+        "Layers": [
+          {
+            "Ref": "TestDataAwsCliLayer28F4A13D",
+          },
+        ],
+        "MemorySize": 1024,
+        "Role": {
+          "Fn::GetAtt": [
+            "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756CServiceRole89A01265",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.13",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756CServiceRole89A01265": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756CServiceRoleDefaultPolicy88902FDF": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":s3:::cdk-hnb659fds-assets-123456789012-ap-northeast-1",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":s3:::cdk-hnb659fds-assets-123456789012-ap-northeast-1/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MyBucketF68F3FF0",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MyBucketF68F3FF0",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756CServiceRoleDefaultPolicy88902FDF",
+        "Roles": [
+          {
+            "Ref": "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756CServiceRole89A01265",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F": {
+      "DependsOn": [
+        "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": "cdk-hnb659fds-assets-123456789012-ap-northeast-1",
+          "S3Key": "faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6.zip",
+        },
+        "Description": {
+          "Fn::Join": [
+            "",
+            [
+              "Lambda function for auto-deleting objects in ",
+              {
+                "Ref": "MyBucketF68F3FF0",
+              },
+              " S3 bucket.",
+            ],
+          ],
+        },
+        "Handler": "index.handler",
+        "MemorySize": 128,
+        "Role": {
+          "Fn::GetAtt": [
+            "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+            "Arn",
+          ],
+        },
+        "Runtime": "nodejs24.x",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Sub": "arn:\${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "GlueDatabase": {
+      "Properties": {
+        "CatalogId": "123456789012",
+        "DatabaseInput": {
+          "Name": "shop",
+        },
+      },
+      "Type": "AWS::Glue::Database",
+    },
+    "MyBucketAutoDeleteObjectsCustomResource2C28D565": {
+      "DeletionPolicy": "Delete",
+      "DependsOn": [
+        "MyBucketPolicyE7FBAC7B",
+      ],
+      "Properties": {
+        "BucketName": {
+          "Ref": "MyBucketF68F3FF0",
+        },
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "Custom::S3AutoDeleteObjects",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "MyBucketF68F3FF0": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true,
+        },
+        "Tags": [
+          {
+            "Key": "aws-cdk:auto-delete-objects",
+            "Value": "true",
+          },
+          {
+            "Key": "aws-cdk:cr-owned:f56092e0",
+            "Value": "true",
+          },
+        ],
+      },
+      "Type": "AWS::S3::Bucket",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "MyBucketPolicyE7FBAC7B": {
+      "Properties": {
+        "Bucket": {
+          "Ref": "MyBucketF68F3FF0",
+        },
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "s3:*",
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false",
+                },
+              },
+              "Effect": "Deny",
+              "Principal": {
+                "AWS": "*",
+              },
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MyBucketF68F3FF0",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MyBucketF68F3FF0",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:PutBucketPolicy",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+              ],
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::GetAtt": [
+                    "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+                    "Arn",
+                  ],
+                },
+              },
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "MyBucketF68F3FF0",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "MyBucketF68F3FF0",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+      },
+      "Type": "AWS::S3::BucketPolicy",
+    },
+    "Orders": {
+      "DependsOn": [
+        "GlueDatabase",
+      ],
+      "Properties": {
+        "CatalogId": "123456789012",
+        "DatabaseName": "shop",
+        "TableInput": {
+          "Name": "orders",
+          "Parameters": {
+            "classification": "csv",
+            "projection.dt.format": "yyyy-MM-dd",
+            "projection.dt.interval": "1",
+            "projection.dt.interval.unit": "DAYS",
+            "projection.dt.range": "2026-01-01,NOW",
+            "projection.dt.type": "date",
+            "projection.enabled": "true",
+            "skip.header.line.count": "1",
+            "storage.location.template": {
+              "Fn::Join": [
+                "",
+                [
+                  "s3://",
+                  {
+                    "Ref": "MyBucketF68F3FF0",
+                  },
+                  "/date=\${dt}/",
+                ],
+              ],
+            },
+          },
+          "PartitionKeys": [
+            {
+              "Name": "dt",
+              "Type": "string",
+            },
+          ],
+          "StorageDescriptor": {
+            "Columns": [
+              {
+                "Name": "order_id",
+                "Type": "string",
+              },
+              {
+                "Name": "customer",
+                "Type": "string",
+              },
+              {
+                "Name": "payment",
+                "Type": "decimal(12,2)",
+              },
+            ],
+            "InputFormat": "org.apache.hadoop.mapred.TextInputFormat",
+            "Location": {
+              "Fn::Join": [
+                "",
+                [
+                  "s3://",
+                  {
+                    "Ref": "MyBucketF68F3FF0",
+                  },
+                  "/",
+                ],
+              ],
+            },
+            "OutputFormat": "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
+            "SerdeInfo": {
+              "Parameters": {
+                "field.delim": ",",
+              },
+              "SerializationLibrary": "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe",
+            },
+          },
+          "TableType": "EXTERNAL_TABLE",
+        },
+      },
+      "Type": "AWS::Glue::Table",
+    },
     "StateMachine2E01A3A5": {
       "DeletionPolicy": "Delete",
       "DependsOn": [
@@ -24,7 +584,66 @@ exports[`StepfunctionsExampleStack snapshot 1`] = `
         "StateMachineRoleB840431D",
       ],
       "Properties": {
-        "DefinitionString": "{"StartAt":"Hello","States":{"Hello":{"Type":"Pass","Result":{"message":"Hello, Step Functions!"},"Next":"Done"},"Done":{"Type":"Succeed"}},"TimeoutSeconds":300}",
+        "DefinitionString": {
+          "Fn::Join": [
+            "",
+            [
+              "{"StartAt":"ValidateInput","States":{"ValidateInput":{"Type":"Choice","QueryLanguage":"JSONata","Choices":[{"Condition":"{% $type($states.input.date) = \\"string\\" and $contains($states.input.date, /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) %}","Next":"Init"}],"Default":"InvalidInputLog"},"InvalidInputLog":{"QueryLanguage":"JSONata","Next":"InvalidInput","Type":"Task","Arguments":{"LogGroupName":"",
+              {
+                "Ref": "StateMachineAppLogGroupAA78DA06",
+              },
+              "","LogStreamName":"",
+              {
+                "Ref": "AppLogStream3A61F24B",
+              },
+              "","LogEvents":[{"Timestamp":"{% $millis() %}","Message":"{% \\"Invalid input: \\" & $string($states.input) %}"}]},"Output":"{% $states.input %}","Resource":"arn:",
+              {
+                "Ref": "AWS::Partition",
+              },
+              ":states:::aws-sdk:cloudwatchlogs:putLogEvents"},"InvalidInput":{"Type":"Fail","QueryLanguage":"JSONata","Error":"ValidationError","Cause":"{% \\"Invalid input: \\" & $string($states.input) %}"},"Init":{"Type":"Pass","QueryLanguage":"JSONata","Output":{"date":"{%\\n          $states.input.date < \\"2026-01-01\\" ? \\"2026-01-01\\" : $states.input.date\\n        %}"},"Next":"StartQuery"},"StartQuery":{"QueryLanguage":"JSONata","Next":"WaitForQuery","Type":"Task","Arguments":{"QueryString":"SELECT SUM(payment) AS total FROM orders WHERE dt = ?","QueryExecutionContext":{"Database":"shop"},"ResultConfiguration":{},"WorkGroup":"",
+              {
+                "Ref": "WorkGroup",
+              },
+              "","ExecutionParameters":["{% \\"'\\" & $states.input.date & \\"'\\" %}"]},"Assign":{"queryExecutionId":"{% $states.result.QueryExecutionId %}","attempt":0},"Resource":"arn:",
+              {
+                "Ref": "AWS::Partition",
+              },
+              ":states:::athena:startQueryExecution"},"WaitForQuery":{"Type":"Wait","QueryLanguage":"JSONata","Seconds":1,"Next":"GetQueryStatus"},"GetQueryStatus":{"QueryLanguage":"JSONata","Next":"IsDone","Type":"Task","Arguments":{"QueryExecutionId":"{% $queryExecutionId %}"},"Assign":{"queryState":"{% $states.result.QueryExecution.Status.State %}","attempt":"{% $attempt + 1 %}"},"Resource":"arn:",
+              {
+                "Ref": "AWS::Partition",
+              },
+              ":states:::athena:getQueryExecution"},"IsDone":{"Type":"Choice","QueryLanguage":"JSONata","Choices":[{"Condition":"{% $queryState = \\"SUCCEEDED\\" %}","Next":"GetResults"},{"Condition":"{% $queryState in [\\"FAILED\\", \\"CANCELLED\\"] %}","Next":"QueryFailedLog"},{"Condition":"{% $attempt >= 10 %}","Next":"tooManyRetriesLog"}],"Default":"WaitForQuery"},"GetResults":{"QueryLanguage":"JSONata","End":true,"Type":"Task","Arguments":{"QueryExecutionId":"{% $queryExecutionId %}"},"Output":{"total":"{% $states.result.ResultSet.Rows[1].Data[0].VarCharValue %}","attempts":"{% $attempt %}"},"Resource":"arn:",
+              {
+                "Ref": "AWS::Partition",
+              },
+              ":states:::athena:getQueryResults"},"QueryFailedLog":{"QueryLanguage":"JSONata","Next":"QueryFailed","Type":"Task","Arguments":{"LogGroupName":"",
+              {
+                "Ref": "StateMachineAppLogGroupAA78DA06",
+              },
+              "","LogStreamName":"",
+              {
+                "Ref": "AppLogStream3A61F24B",
+              },
+              "","LogEvents":[{"Timestamp":"{% $millis() %}","Message":"{% \\"Athena query \\" & $queryState %}"}]},"Output":"{% $states.input %}","Resource":"arn:",
+              {
+                "Ref": "AWS::Partition",
+              },
+              ":states:::aws-sdk:cloudwatchlogs:putLogEvents"},"QueryFailed":{"Type":"Fail","QueryLanguage":"JSONata","Error":"QueryFailed","Cause":"{% \\"Athena query \\" & $queryState %}"},"tooManyRetriesLog":{"QueryLanguage":"JSONata","Next":"tooManyRetries","Type":"Task","Arguments":{"LogGroupName":"",
+              {
+                "Ref": "StateMachineAppLogGroupAA78DA06",
+              },
+              "","LogStreamName":"",
+              {
+                "Ref": "AppLogStream3A61F24B",
+              },
+              "","LogEvents":[{"Timestamp":"{% $millis() %}","Message":"The retry limit was exceeded"}]},"Output":"{% $states.input %}","Resource":"arn:",
+              {
+                "Ref": "AWS::Partition",
+              },
+              ":states:::aws-sdk:cloudwatchlogs:putLogEvents"},"tooManyRetries":{"Type":"Fail","QueryLanguage":"JSONata","Error":"MaxRetryExceeded","Cause":"The retry limit was exceeded"}},"TimeoutSeconds":300}",
+            ],
+          ],
+        },
         "LoggingConfiguration": {
           "Destinations": [
             {
@@ -47,7 +666,7 @@ exports[`StepfunctionsExampleStack snapshot 1`] = `
             "Arn",
           ],
         },
-        "StateMachineType": "STANDARD",
+        "StateMachineType": "EXPRESS",
         "TracingConfiguration": {
           "Enabled": true,
         },
@@ -55,10 +674,18 @@ exports[`StepfunctionsExampleStack snapshot 1`] = `
       "Type": "AWS::StepFunctions::StateMachine",
       "UpdateReplacePolicy": "Delete",
     },
+    "StateMachineAppLogGroupAA78DA06": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "RetentionInDays": 3,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Delete",
+    },
     "StateMachineLogGroup15B91BCB": {
       "DeletionPolicy": "Delete",
       "Properties": {
-        "RetentionInDays": 30,
+        "RetentionInDays": 3,
       },
       "Type": "AWS::Logs::LogGroup",
       "UpdateReplacePolicy": "Delete",
@@ -104,6 +731,180 @@ exports[`StepfunctionsExampleStack snapshot 1`] = `
         "PolicyDocument": {
           "Statement": [
             {
+              "Action": "logs:PutLogEvents",
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:",
+                    {
+                      "Ref": "AWS::Partition",
+                    },
+                    ":logs:ap-northeast-1:123456789012:log-group:",
+                    {
+                      "Ref": "StateMachineAppLogGroupAA78DA06",
+                    },
+                    ":log-stream:",
+                    {
+                      "Ref": "AppLogStream3A61F24B",
+                    },
+                  ],
+                ],
+              },
+            },
+            {
+              "Action": [
+                "athena:getDataCatalog",
+                "athena:startQueryExecution",
+                "athena:getQueryExecution",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":athena:ap-northeast-1:123456789012:datacatalog/AwsDataCatalog",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":athena:ap-northeast-1:123456789012:workgroup/",
+                      {
+                        "Ref": "WorkGroup",
+                      },
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "s3:CreateBucket",
+                "s3:ListBucket",
+                "s3:GetBucketLocation",
+                "s3:GetObject",
+              ],
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "s3:AbortMultipartUpload",
+                "s3:ListBucketMultipartUploads",
+                "s3:ListMultipartUploadParts",
+                "s3:PutObject",
+              ],
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": "lakeformation:GetDataAccess",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "glue:BatchCreatePartition",
+                "glue:BatchDeletePartition",
+                "glue:BatchDeleteTable",
+                "glue:BatchGetPartition",
+                "glue:CreateDatabase",
+                "glue:CreatePartition",
+                "glue:CreateTable",
+                "glue:DeleteDatabase",
+                "glue:DeletePartition",
+                "glue:DeleteTable",
+                "glue:GetDatabase",
+                "glue:GetDatabases",
+                "glue:GetPartition",
+                "glue:GetPartitions",
+                "glue:GetTable",
+                "glue:GetTables",
+                "glue:UpdateDatabase",
+                "glue:UpdatePartition",
+                "glue:UpdateTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":glue:ap-northeast-1:123456789012:catalog",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":glue:ap-northeast-1:123456789012:database/shop",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":glue:ap-northeast-1:123456789012:table/shop/*",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":glue:ap-northeast-1:123456789012:userDefinedFunction/shop/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "athena:getQueryExecution",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": "athena:getQueryResults",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": "s3:GetObject",
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
               "Action": [
                 "logs:CreateLogDelivery",
                 "logs:GetLogDelivery",
@@ -138,6 +939,65 @@ exports[`StepfunctionsExampleStack snapshot 1`] = `
         ],
       },
       "Type": "AWS::IAM::Policy",
+    },
+    "TestDataAwsCliLayer28F4A13D": {
+      "Properties": {
+        "Content": {
+          "S3Bucket": "cdk-hnb659fds-assets-123456789012-ap-northeast-1",
+          "S3Key": "98f62bef9320f8c0a0a7be21d7c746f069131f196f51ffe3008a6bb730b368ec.zip",
+        },
+        "Description": "/opt/awscli/aws",
+      },
+      "Type": "AWS::Lambda::LayerVersion",
+    },
+    "TestDataCustomResource611BEB73": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "DestinationBucketName": {
+          "Ref": "MyBucketF68F3FF0",
+        },
+        "OutputObjectKeys": true,
+        "Prune": false,
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "CustomCDKBucketDeployment8693BB64968944B69AAFB0CC9EB8756C81C01536",
+            "Arn",
+          ],
+        },
+        "SourceBucketNames": [
+          "cdk-hnb659fds-assets-123456789012-ap-northeast-1",
+        ],
+        "SourceObjectKeys": [
+          "0f0aa135adad31b51949931b1eeec51df04bd616d5f75d019edf547cb8e0bc84.zip",
+        ],
+        "WaitForDistributionInvalidation": true,
+      },
+      "Type": "Custom::CDKBucketDeployment",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "WorkGroup": {
+      "Properties": {
+        "Name": "stepfunctions-example",
+        "RecursiveDeleteOption": true,
+        "WorkGroupConfiguration": {
+          "EnforceWorkGroupConfiguration": true,
+          "ResultConfiguration": {
+            "OutputLocation": {
+              "Fn::Join": [
+                "",
+                [
+                  "s3://",
+                  {
+                    "Ref": "AhtenaResultBucketBB29F839",
+                  },
+                  "/athena-results/",
+                ],
+              ],
+            },
+          },
+        },
+      },
+      "Type": "AWS::Athena::WorkGroup",
     },
   },
   "Rules": {
