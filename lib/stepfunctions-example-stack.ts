@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import { Validations } from 'aws-cdk-lib';
+import * as apigw from 'aws-cdk-lib/aws-apigateway';
 import * as athena from 'aws-cdk-lib/aws-athena';
 import * as glue from 'aws-cdk-lib/aws-glue';
 import * as logs from 'aws-cdk-lib/aws-logs';
@@ -288,6 +289,54 @@ export class StepfunctionsExampleStack extends cdk.Stack {
         includeExecutionData: true,
       },
     });
+
+    const apiAccessLogGroup = new logs.LogGroup(this, 'ApiAccessLogs', {
+      retention: props.logRetention ?? logs.RetentionDays.THREE_DAYS,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const api = new apigw.StepFunctionsRestApi(this, 'Api', {
+      stateMachine: this.stateMachine,
+      deploy: true,
+      path: true,
+      querystring: true,
+      headers: false,
+      // 実行ログ (APIG6) の出力には API Gateway のアカウント設定に CloudWatch ロールが必要。
+      // feature flag に依存せず synth/テストで同じ結果になるよう明示する
+      cloudWatchRole: true,
+      // AwsSolutions-APIG4: IAM 認証 (SigV4) を必須にする
+      defaultMethodOptions: {
+        authorizationType: apigw.AuthorizationType.IAM,
+      },
+      deployOptions: {
+        // AwsSolutions-APIG1: アクセスログ
+        accessLogDestination: new apigw.LogGroupLogDestination(apiAccessLogGroup),
+        accessLogFormat: apigw.AccessLogFormat.jsonWithStandardFields(),
+        // AwsSolutions-APIG6: 全メソッドの実行ログ
+        loggingLevel: apigw.MethodLoggingLevel.ERROR,
+      },
+    });
+
+    // AwsSolutions-APIG2: リクエスト検証を有効化する
+    api.addRequestValidator('RequestValidator', {
+      validateRequestBody: true,
+      validateRequestParameters: true,
+    });
+
+    Validations.of(api).acknowledge(
+      {
+        id: 'AwsSolutions-COG4',
+        reason: 'The API uses IAM authorization instead of a Cognito user pool authorizer.',
+      },
+      {
+        id: 'AwsSolutions-IAM4[Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs]',
+        reason: 'The API Gateway account-level CloudWatch role uses the AWS managed policy for pushing logs.',
+      },
+      {
+        id: 'AwsSolutions-APIG3',
+        reason: 'WAF is not required for this example application.',
+      },
+    );
 
     // ログ配信 (CloudWatch Logs vended logs) と X-Ray の API はリソースレベルの制限ができないため
     // CDK が生成するポリシーには Resource: '*' が含まれる
