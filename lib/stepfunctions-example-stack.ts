@@ -295,12 +295,7 @@ export class StepfunctionsExampleStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    const api = new apigw.StepFunctionsRestApi(this, 'Api', {
-      stateMachine: this.stateMachine,
-      deploy: true,
-      path: true,
-      querystring: true,
-      headers: false,
+    const api = new apigw.RestApi(this, 'Api', {
       // 実行ログ (APIG6) の出力には API Gateway のアカウント設定に CloudWatch ロールが必要。
       // feature flag に依存せず synth/テストで同じ結果になるよう明示する
       cloudWatchRole: true,
@@ -317,10 +312,39 @@ export class StepfunctionsExampleStack extends cdk.Stack {
       },
     });
 
-    // AwsSolutions-APIG2: リクエスト検証を有効化する
-    api.addRequestValidator('RequestValidator', {
-      validateRequestBody: true,
-      validateRequestParameters: true,
+    // POST / のリクエストボディ {"date": "YYYY-MM-DD"} を、そのままの形でステートマシンの入力にする。
+    // StepFunctionsRestApi の既定テンプレートは入力を {"body": ..., "querystring": ..., "path": ...} で包むため、
+    // ステートマシンが参照する $states.input.date が見つからず ValidateInput で失敗していた。
+    const integration = apigw.StepFunctionsIntegration.startExecution(this.stateMachine, {
+      requestTemplates: {
+        'application/json': JSON.stringify({
+          stateMachineArn: this.stateMachine.stateMachineArn,
+          input: `{"date": $util.escapeJavaScript($input.json('$.date'))}`,
+        }),
+      },
+    });
+
+    // date が無い・文字列でないリクエストは、テンプレートで不正な入力を組み立てる前に API Gateway で 400 にする
+    // (日付の形式チェックはステートマシンの ValidateInput が行う)
+    const requestModel = api.addModel('DateRequest', {
+      contentType: 'application/json',
+      schema: {
+        schema: apigw.JsonSchemaVersion.DRAFT4,
+        type: apigw.JsonSchemaType.OBJECT,
+        required: ['date'],
+        properties: {
+          date: { type: apigw.JsonSchemaType.STRING },
+        },
+      },
+    });
+
+    api.root.addMethod('POST', integration, {
+      requestModels: { 'application/json': requestModel },
+      // AwsSolutions-APIG2: リクエスト検証を有効化する
+      requestValidatorOptions: {
+        validateRequestBody: true,
+        validateRequestParameters: true,
+      },
     });
 
     Validations.of(api).acknowledge(

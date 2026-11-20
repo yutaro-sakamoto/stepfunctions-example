@@ -75,6 +75,23 @@ describe('StepfunctionsExampleStack', () => {
     custom.hasResourceProperties('AWS::Logs::LogGroup', { RetentionInDays: 7 });
   });
 
+  test('REST API requires IAM auth and passes the request body date as the execution input', () => {
+    template.resourceCountIs('AWS::ApiGateway::Method', 1);
+    const [method] = Object.values(template.findResources('AWS::ApiGateway::Method'));
+    expect(method.Properties).toMatchObject({ HttpMethod: 'POST', AuthorizationType: 'AWS_IAM' });
+
+    // RequestTemplates は Fn::Join になっているので、トークン部分をプレースホルダに置き換えてからパースする
+    const requestTemplate = method.Properties.Integration.RequestTemplates['application/json'];
+    const raw = (requestTemplate['Fn::Join'][1] as unknown[])
+      .map((p) => (typeof p === 'string' ? p : 'TOKEN'))
+      .join('');
+    // 入力が {"body": ...} で包まれず、ステートマシンが参照する date がトップレベルに来ること
+    expect(JSON.parse(raw)).toEqual({
+      stateMachineArn: 'TOKEN',
+      input: `{"date": $util.escapeJavaScript($input.json('$.date'))}`,
+    });
+  });
+
   test('exports the state machine ARN', () => {
     template.hasOutput('StateMachineArn', {});
   });
